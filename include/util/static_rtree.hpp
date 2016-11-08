@@ -31,6 +31,7 @@
 #include <queue>
 #include <string>
 #include <vector>
+#include <type_traits>
 
 // An extended alignment is implementation-defined, so use compiler attributes
 // until alignas(LEAF_PAGE_SIZE) is compiler-independent.
@@ -373,6 +374,7 @@ class StaticRTree
         {
             m_leaves_region.open(leaf_file);
             std::size_t num_leaves = m_leaves_region.size() / sizeof(LeafNode);
+            static_assert(std::alignment_of<LeafNode>::value == 1, "requires byte alignment");
             m_leaves.reset(reinterpret_cast<const LeafNode *>(m_leaves_region.data()), num_leaves);
         }
         catch (const std::exception &exc)

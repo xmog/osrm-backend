@@ -43,6 +43,7 @@
 #include <thread>
 #include <tuple>
 #include <vector>
+#include <type_traits>
 
 namespace std
 {
@@ -530,6 +531,12 @@ EdgeID Contractor::LoadEdgeExpandedGraph(
         EdgeID max_edge_id;
     };
 #pragma pack(pop, r1)
+
+    static_assert(std::alignment_of<EdgeBasedGraphHeader>::value == 1, "requires byte alignment");
+    static_assert(std::alignment_of<extractor::lookup::PenaltyBlock>::value == 1, "requires byte alignment");
+    static_assert(std::alignment_of<extractor::EdgeBasedEdge>::value == 1, "requires byte alignment");
+    static_assert(std::alignment_of<extractor::lookup::SegmentHeaderBlock>::value == 1, "requires byte alignment");
+    static_assert(std::alignment_of<extractor::lookup::SegmentBlock>::value == 1, "requires byte alignment");
 
     const EdgeBasedGraphHeader graph_header =
         *(reinterpret_cast<const EdgeBasedGraphHeader *>(edge_based_graph_region.get_address()));
