@@ -95,6 +95,23 @@ inline std::pair<double, FloatCoordinate> projectPointOnSegment(const FloatCoord
             }};
 }
 
+// find the closest distance between a coordinate and a segment
+// O(1)
+double findClosestDistance(const Coordinate coordinate,
+                           const Coordinate segment_begin,
+                           const Coordinate segment_end);
+
+// find the closest distance between a coordinate and a set of coordinates
+// O(|coordinates|)
+double findClosestDistance(const Coordinate coordinate, const std::vector<Coordinate> &coordinates);
+
+// find the closes distance between two sets of coordinates
+// O(|lhs| * |rhs|)
+double findClosestDistance(const std::vector<Coordinate> &lhs, const std::vector<Coordinate> &rhs);
+
+// checks if two sets of coordinates describe a parallel set of ways
+bool areParallel(const std::vector<Coordinate> &lhs, const std::vector<Coordinate> &rhs);
+
 double perpendicularDistance(const Coordinate segment_source,
                              const Coordinate segment_target,
                              const Coordinate query_location);
@@ -136,8 +153,14 @@ bool isCCW(const Coordinate first_coordinate,
            const Coordinate second_coordinate,
            const Coordinate third_coordinate);
 
-std::pair<util::Coordinate, util::Coordinate>
-leastSquareRegression(const std::vector<util::Coordinate> &coordinates);
+std::pair<Coordinate, Coordinate> leastSquareRegression(const std::vector<Coordinate> &coordinates);
+
+// rotates a coordinate around the point (0,0). This function can be used to normalise a few
+// computations around regression vectors
+Coordinate rotateCCWAroundZero(Coordinate coordinate, double angle_in_radians);
+
+// compute the difference vector of two coordinates lhs - rhs
+Coordinate difference(const Coordinate lhs, const Coordinate rhs);
 
 } // ns coordinate_calculation
 } // ns util

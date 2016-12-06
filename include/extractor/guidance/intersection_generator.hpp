@@ -22,6 +22,13 @@ namespace extractor
 {
 namespace guidance
 {
+
+struct IntersectionGenerationParameters
+{
+    NodeID nid;
+    EdgeID via_eid;
+};
+
 // The Intersection Generator is given a turn location and generates an intersection representation
 // from it. For this all turn possibilities are analysed.
 // We consider turn restrictions to indicate possible turns. U-turns are generated based on profile
@@ -63,8 +70,8 @@ class IntersectionGenerator
     // more than a single next road. This function skips over degree two nodes to find coorect input
     // for GetConnectedRoads.
     OSRM_ATTR_WARN_UNUSED
-    std::pair<NodeID, EdgeID> SkipDegreeTwoNodes(const NodeID starting_node,
-                                                 const EdgeID via_edge) const;
+    IntersectionGenerationParameters SkipDegreeTwoNodes(const NodeID starting_node,
+                                                        const EdgeID via_edge) const;
 
     // Allow access to the coordinate extractor for all owners
     const CoordinateExtractor &GetCoordinateExtractor() const;
@@ -73,7 +80,7 @@ class IntersectionGenerator
     // the node reached from `from_node` via `via_eid`. The resulting candidates have to be analysed
     // for their actual instructions later on.
     // The switch for `use_low_precision_angles` enables a faster mode that will procude less
-    // accurate coordinates. It should be good enough to check order of turns, find striaghtmost
+    // accurate coordinates. It should be good enough to check order of turns, find straightmost
     // turns. Even good enough to do some simple angle verifications. It is mostly available to
     // allow for faster graph traversal in the extraction phase.
     OSRM_ATTR_WARN_UNUSED

@@ -1,17 +1,16 @@
 #ifndef OSRM_EXTRACTOR_GUIDANCE_INTERSECTION_NORMALIZER_HPP_
 #define OSRM_EXTRACTOR_GUIDANCE_INTERSECTION_NORMALIZER_HPP_
 
-#include "util/typedefs.hpp"
-
 #include "util/attributes.hpp"
+#include "util/name_table.hpp"
+#include "util/typedefs.hpp"
 
 #include "extractor/guidance/coordinate_extractor.hpp"
 #include "extractor/guidance/intersection.hpp"
 #include "extractor/guidance/intersection_generator.hpp"
+#include "extractor/guidance/mergable_road_detector.hpp"
 #include "extractor/query_node.hpp"
-
 #include "extractor/suffix_table.hpp"
-#include "util/name_table.hpp"
 
 #include <utility>
 #include <vector>
@@ -51,11 +50,8 @@ class IntersectionNormalizer
 
   private:
     const util::NodeBasedDynamicGraph &node_based_graph;
-    const std::vector<extractor::QueryNode> &node_coordinates;
-    const util::NameTable &name_table;
-    const SuffixTable &street_name_suffix_table;
-
     const IntersectionGenerator &intersection_generator;
+    const MergableRoadDetector mergable_road_detector;
 
     /* check if two indices in an intersection can be seen as a single road in the perceived
      * intersection representation. See below for an example. Utility function for
@@ -73,12 +69,14 @@ class IntersectionNormalizer
                   std::size_t first_index,
                   std::size_t second_index) const;
 
-    // A tool called by CanMerge. It checks whether two indices can be merged, not concerned without
-    // remaining parts of the intersection.
-    bool InnerCanMerge(const NodeID intersection_node,
-                       const IntersectionShape &intersection,
-                       std::size_t first_index,
-                       std::size_t second_index) const;
+    // Perform an Actual Merge
+    std::pair<EdgeID, EdgeID> DetermineMergeDirection(const IntersectionShapeData &lhs,
+                                                      const IntersectionShapeData &rhs) const;
+    IntersectionShapeData MergeRoads(const IntersectionShapeData &destination,
+                                     const IntersectionShapeData &source) const;
+    IntersectionShapeData MergeRoads(const std::pair<EdgeID, EdgeID> direction,
+                                     const IntersectionShapeData &lhs,
+                                     const IntersectionShapeData &rhs) const;
 
     // Merge segregated roads to omit invalid turns in favor of treating segregated roads as
     // one.
