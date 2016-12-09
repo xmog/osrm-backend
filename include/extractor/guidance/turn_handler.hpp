@@ -12,7 +12,6 @@
 
 #include <boost/optional.hpp>
 
-
 #include <cstddef>
 #include <utility>
 #include <vector>
@@ -60,15 +59,11 @@ class TurnHandler : public IntersectionHandler
                         const ConnectedRoad &road,
                         const ConnectedRoad &other) const;
 
-    bool hasObvious(const EdgeID &via_edge,
-                    const Intersection &intersection,
-                    const Fork) const;
+    bool hasObvious(const EdgeID &via_edge, const Fork &fork) const;
 
-    boost::optional<Fork>
-    findLeftAndRightmostForkCandidates(Intersection &intersection) const;
+    boost::optional<Fork> findForkCandidatesByGeometry(Intersection &intersection) const;
 
-    bool isCompatibleByRoadClass(const Intersection &intersection,
-                                 const Fork fork) const;
+    bool isCompatibleByRoadClass(const Intersection &intersection, const Fork fork) const;
 
     // Dead end.
     OSRM_ATTR_WARN_UNUSED

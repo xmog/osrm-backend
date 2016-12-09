@@ -26,12 +26,6 @@ namespace guidance
 {
 
 // the shape of an intersection only knows about edge IDs and bearings
-// It a way of switching onto a segment, indicated by an EdgeID. The
-// associated turn is described by an angle and an instruction that is used to announce it.
-// The Turn Operation indicates what is exposed to the outside of the turn analysis.
-//
-// `angle`      is given counter-clockwise:
-//              0 = uturn, 90 = right, 180 = straight, 270 = left
 // `bearing`    is the direction in clockwise angle from true north after taking the turn:
 //              0 = heading north, 90 = east, 180 = south, 270 = west
 struct IntersectionShapeData
@@ -133,6 +127,12 @@ template <typename Self> struct EnableIntersectionOps
         auto comp = makeCompareAngularDeviation(angle);
         return std::min_element(self()->begin(), self()->end(), comp);
     }
+    // returns a non-const_interator
+    auto findClosestTurn(double angle)
+    {
+        auto comp = makeCompareAngularDeviation(angle);
+        return std::min_element(self()->begin(), self()->end(), comp);
+    }
 
     // Check validity of the intersection object. We assume a few basic properties every set of
     // connected roads should follow throughout guidance pre-processing. This utility function
@@ -212,6 +212,13 @@ template <typename Self> struct EnableIntersectionOps
     // Returns the number of roads we can not enter at this intersection, respectively.
     auto countNonEnterable() const { return self()->size() - self()->countEnterable(); }
 
+    // check if all roads between begin and end allow entry
+    template <typename iteratorT>
+    bool hasAllValidEntries(const iteratorT begin, const iteratorT end) const
+    {
+        return all_of(begin, end, [](const ConnectedRoad &road) { return road.entry_allowed; });
+    }
+
   private:
     auto self() { return static_cast<Self *>(this); }
     auto self() const { return static_cast<const Self *>(this); }
@@ -226,27 +233,31 @@ struct IntersectionView final : std::vector<IntersectionViewData>,      //
 // `Intersection` is a relative view of an intersection by an incoming edge.
 // `Intersection` are streets at an intersection ordered from from sharp right counter-clockwise to
 // sharp left where `intersection[0]` is _always_ a u-turn
+
+// An intersection is an ordered list of connected roads ordered from from sharp right
+// counter-clockwise to sharp left where `intersection[0]` is always a u-turn
+//
+//                                           |
+//                                           |
+//                                     (intersec[3])
+//                                           |
+//                                           |
+//                                           |
+//  nid ---(via_eid/intersec[0])--- nbg.GetTarget(via)  ---(intersec[2])---
+//                                           |
+//                                           |
+//                                           |
+//                                     (intersec[1])
+//                                           |
+//                                           |
+//
+// intersec := intersection
+// nbh := node_based_graph
+//
 struct Intersection final : std::vector<ConnectedRoad>,         //
                             EnableIntersectionOps<Intersection> //
 {
     using Base = std::vector<ConnectedRoad>;
-
-    /*
-     * Check validity of the intersection object. We assume a few basic properties every set of
-     * connected roads should follow throughout guidance pre-processing. This utility function
-     * allows checking intersections for validity
-     */
-    bool valid() const;
-
-    // given all possible turns, which is the highest connected number of lanes per turn. This value
-    // is used, for example, during generation of intersections.
-    std::uint8_t getHighestConnectedLaneCount(const util::NodeBasedDynamicGraph &) const;
-
-    // check if all roads between first and last allow entry
-    bool hasValidEntries(Intersection::iterator first, Intersection::iterator last) const;
-
-    Base::iterator findClosestTurn(double angle);
-    Base::const_iterator findClosestTurn(double angle) const;
 };
 
 } // namespace guidance
