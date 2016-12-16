@@ -106,7 +106,7 @@ StringView NameTable::GetNameForID2(const NameID id) const
 
     auto first = begin(m_names_char_list) + range.front();
     auto last = begin(m_names_char_list) + range.back() + 1;
-    auto len = last - first;
+    const std::size_t len = last - first;
 
     return StringView{&*first, len};
 }
