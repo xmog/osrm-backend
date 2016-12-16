@@ -744,10 +744,10 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
         }
 
         auto first = m_names_char_list.begin() + range.front();
-        auto last = m_names_char_list.begin() + range.back() + 1;
+        auto last = m_names_char_list.begin() + range.back() + 1u;
         // These iterators are useless: they're InputIterators onto a contiguous block of memory.
         // Deref to get to the first element, then Addressof to get the memory address of the it.
-        auto len = &*last - &*first;
+        const std::size_t len = &*last - &*first;
 
         return StringView{&*first, len};
     }
@@ -920,7 +920,7 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
                     m_datasource_name_lengths[id];
         // These iterators are useless: they're InputIterators onto a contiguous block of memory.
         // Deref to get to the first element, then Addressof to get the memory address of the it.
-        auto len = &*last - &*first;
+        const std::size_t len = &*last - &*first;
 
         return StringView{&*first, len};
     }

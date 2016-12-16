@@ -56,13 +56,13 @@ class MockDataFacade final : public engine::datafacade::BaseDataFacade
     {
         return SPECIAL_EDGEID;
     }
-    util::Coordinate GetCoordinateOfNode(const unsigned /* id */) const override
+    util::Coordinate GetCoordinateOfNode(const NodeID /* id */) const override
     {
         return {util::FixedLongitude{0}, util::FixedLatitude{0}};
     }
-    OSMNodeID GetOSMNodeIDOfNode(const unsigned /* id */) const override { return OSMNodeID{0}; }
-    bool EdgeIsCompressed(const unsigned /* id */) const { return false; }
-    GeometryID GetGeometryIndexForEdgeID(const unsigned /* id */) const override
+    OSMNodeID GetOSMNodeIDOfNode(const NodeID /* id */) const override { return OSMNodeID{0}; }
+    bool EdgeIsCompressed(const EdgeID /* id */) const { return false; }
+    GeometryID GetGeometryIndexForEdgeID(const EdgeID /* id */) const override
     {
         return GeometryID{SPECIAL_GEOMETRYID, false};
     }
@@ -88,24 +88,25 @@ class MockDataFacade final : public engine::datafacade::BaseDataFacade
         result_weights[0] = 1;
         return result_weights;
     }
-    std::vector<uint8_t> GetUncompressedForwardDatasources(const EdgeID /*id*/) const override
+    std::vector<DatasourceID> GetUncompressedForwardDatasources(const EdgeID /*id*/) const override
     {
         return {};
     }
-    std::vector<uint8_t> GetUncompressedReverseDatasources(const EdgeID /*id*/) const override
+    std::vector<DatasourceID> GetUncompressedReverseDatasources(const EdgeID /*id*/) const override
     {
         return {};
     }
-    std::string GetDatasourceName(const uint8_t /*datasource_name_id*/) const override
-    {
-        return "";
-    }
+
+    std::string GetDatasourceName(const DatasourceID /*id*/) const override { return ""; }
+
+    StringView GetDatasourceName2(const DatasourceID) const override final { return {}; }
+
     extractor::guidance::TurnInstruction
-    GetTurnInstructionForEdgeID(const unsigned /* id */) const override
+    GetTurnInstructionForEdgeID(const EdgeID /* id */) const override
     {
         return extractor::guidance::TurnInstruction::NO_TURN();
     }
-    extractor::TravelMode GetTravelModeForEdgeID(const unsigned /* id */) const override
+    extractor::TravelMode GetTravelModeForEdgeID(const EdgeID /* id */) const override
     {
         return TRAVEL_MODE_INACCESSIBLE;
     }
@@ -198,11 +199,19 @@ class MockDataFacade final : public engine::datafacade::BaseDataFacade
 
     unsigned GetCheckSum() const override { return 0; }
     bool IsCoreNode(const NodeID /* id */) const override { return false; }
-    unsigned GetNameIndexFromEdgeID(const unsigned /* id */) const override { return 0; }
-    std::string GetNameForID(const unsigned /* name_id */) const override { return ""; }
-    std::string GetRefForID(const unsigned /* name_id */) const override { return ""; }
-    std::string GetPronunciationForID(const unsigned /* name_id */) const override { return ""; }
-    std::string GetDestinationsForID(const unsigned /* name_id */) const override { return ""; }
+
+    NameID GetNameIndexFromEdgeID(const EdgeID /* id */) const override { return 0; }
+
+    std::string GetNameForID(const NameID /* id */) const override { return ""; }
+    std::string GetRefForID(const NameID /* id */) const override { return ""; }
+    std::string GetPronunciationForID(const NameID /* id */) const override { return ""; }
+    std::string GetDestinationsForID(const NameID /* id */) const override { return ""; }
+
+    StringView GetNameForID2(const NameID) const override final { return {}; }
+    StringView GetRefForID2(const NameID) const override final { return {}; }
+    StringView GetPronunciationForID2(const NameID) const override final { return {}; }
+    StringView GetDestinationsForID2(const NameID) const override final { return {}; }
+
     std::size_t GetCoreSize() const override { return 0; }
     std::string GetTimestamp() const override { return ""; }
     bool GetContinueStraightDefault() const override { return true; }
