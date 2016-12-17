@@ -575,7 +575,22 @@ EdgeID Contractor::LoadEdgeExpandedGraph(
         *(reinterpret_cast<const EdgeBasedGraphHeader *>(edge_based_graph_region.get_address()));
 
     const util::FingerPrint fingerprint_valid = util::FingerPrint::GetValid();
-    graph_header.fingerprint.TestContractor(fingerprint_valid);
+    if (!graph_header.fingerprint.IsMagicNumberSAME(fingerprint_valid))
+    {
+        throw util::exception("Fingerprint doesn't match" + SOURCE_REF);
+    }
+    if (!graph_header.fingerprint.IsChecksumValid())
+    {
+        throw util::exception("Fingerprint checksum is corrupted" + SOURCE_REF);
+    }
+    if (!graph_header.fingerprint.IsMajorVersionSAME(fingerprint_valid))
+    {
+        throw util::exception("Major version mis-match" + SOURCE_REF);
+    }
+    if (!graph_header.fingerprint.IsMajorVersionSAME(fingerprint_valid))
+    {
+        util::Log(logWARNING) << "Minor version mis-match" + SOURCE_REF;
+    }
 
     edge_based_edge_list.resize(graph_header.number_of_edges);
     util::Log() << "Reading " << graph_header.number_of_edges << " edges from the edge based graph";

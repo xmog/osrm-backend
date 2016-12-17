@@ -5,6 +5,7 @@
 #include "util/exception_utils.hpp"
 #include "util/fingerprint.hpp"
 #include "util/log.hpp"
+#include "util/version.hpp"
 
 #include <boost/filesystem/fstream.hpp>
 #include <boost/iostreams/seek.hpp>
@@ -119,10 +120,53 @@ class FileReader
     {
         auto fingerprint = ReadOne<util::FingerPrint>();
         const auto valid = util::FingerPrint::GetValid();
-        // compare the compilation state stored in the fingerprint
-        return valid.IsMagicNumberOK(fingerprint) && valid.TestContractor(fingerprint) &&
-               valid.TestGraphUtil(fingerprint) && valid.TestRTree(fingerprint) &&
-               valid.TestQueryObjects(fingerprint);
+
+        // Check magic number
+        if (!valid.IsMagicNumberSAME(fingerprint))
+        {
+            util::Log(logERROR) << "Fingerprint magic number does not match in "
+                                << filepath.string();
+            return false;
+        }
+
+        if (!fingerprint.IsChecksumValid())
+        {
+            util::Log(logERROR) << "Fingerprint is invalid, it may be corrupted or from "
+                                   "an old OSRM version in file "
+                                << filepath.string();
+            util::Log(logERROR) << "It claims to be from version " << fingerprint.GetMajorVersion()
+                                << "." << fingerprint.GetMinorVersion() << "."
+                                << fingerprint.GetPatchVersion()
+                                << " but the checksum does not match.";
+            return false;
+        }
+
+        if (!valid.IsMajorVersionSAME(fingerprint))
+        {
+            util::Log(logERROR) << filepath.string()
+                                << " is not compatible with this version of OSRM";
+
+            util::Log(logERROR) << "It was prepared with OSRM " << fingerprint.GetMajorVersion()
+                                << "." << fingerprint.GetMinorVersion() << "."
+                                << fingerprint.GetPatchVersion() << " but you are running "
+                                << OSRM_VERSION_MAJOR << "." << OSRM_VERSION_MINOR << "."
+                                << OSRM_VERSION_PATCH;
+            return false;
+        }
+
+        if (!valid.IsMinorVersionSAME(fingerprint))
+        {
+            util::Log(logWARNING) << filepath.string()
+                                  << " may not be compatible with this version of OSRM";
+
+            util::Log(logWARNING) << "It was prepared with OSRM " << fingerprint.GetMajorVersion()
+                                  << "." << fingerprint.GetMinorVersion() << "."
+                                  << fingerprint.GetPatchVersion() << " but you are running "
+                                  << OSRM_VERSION_MAJOR << "." << OSRM_VERSION_MINOR << "."
+                                  << OSRM_VERSION_PATCH;
+        }
+
+        return true;
     }
 
     std::size_t Size()
@@ -239,6 +283,7 @@ class FileWriter
     bool WriteFingerprint()
     {
         const auto fingerprint = util::FingerPrint::GetValid();
+
         return WriteOne(fingerprint);
     }
 };

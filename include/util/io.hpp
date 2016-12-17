@@ -16,6 +16,7 @@
 
 #include "storage/io.hpp"
 #include "util/fingerprint.hpp"
+#include "util/version.hpp"
 
 namespace osrm
 {
