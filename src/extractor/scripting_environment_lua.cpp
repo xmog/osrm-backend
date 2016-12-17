@@ -74,8 +74,6 @@ template <class T> double lonToDouble(T const &object)
     return static_cast<double>(util::toFloating(object.lon));
 }
 
-auto get_nodes_for_way(const osmium::Way &way) -> decltype(way.nodes()) { return way.nodes(); }
-
 Sol2ScriptingEnvironment::Sol2ScriptingEnvironment(const std::string &file_name)
     : file_name(file_name)
 {
@@ -190,7 +188,10 @@ void Sol2ScriptingEnvironment::InitContext(LuaScriptingContext &context)
                                             "id",
                                             &osmium::Way::id,
                                             "get_nodes",
-                                            &get_nodes_for_way);
+                                            [](const osmium::Way &way) {
+                                                return std::vector<osmium::NodeRef>(
+                                                    way.nodes().begin(), way.nodes().end());
+                                            });
 
     context.state.new_usertype<osmium::Node>("Node",
                                              "location",
