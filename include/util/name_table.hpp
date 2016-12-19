@@ -3,12 +3,10 @@
 
 #include "util/range_table.hpp"
 #include "util/shared_memory_vector_wrapper.hpp"
+#include "util/string_view.hpp"
 #include "util/typedefs.hpp"
 
 #include <string>
-
-#include <boost/utility/string_ref.hpp>
-using StringView = boost::string_ref;
 
 namespace osrm
 {
@@ -38,9 +36,9 @@ class NameTable
 
     // TODO: keep old ones around while refactoring this; remove later and use string view ones
 
-    StringView GetNameForID2(const NameID id) const;
-    StringView GetRefForID2(const NameID id) const;
-    StringView GetPronunciationForID2(const NameID id) const;
+    util::StringView GetNameForID2(const NameID id) const;
+    util::StringView GetRefForID2(const NameID id) const;
+    util::StringView GetPronunciationForID2(const NameID id) const;
 };
 } // namespace util
 } // namespace osrm

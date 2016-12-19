@@ -16,6 +16,7 @@
 #include "util/guidance/turn_bearing.hpp"
 #include "util/guidance/turn_lanes.hpp"
 #include "util/integer_range.hpp"
+#include "util/string_view.hpp"
 #include "util/string_util.hpp"
 #include "util/typedefs.hpp"
 
@@ -27,9 +28,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/utility/string_ref.hpp>
-using StringView = boost::string_ref;
-
 namespace osrm
 {
 namespace engine
@@ -37,6 +35,7 @@ namespace engine
 namespace datafacade
 {
 
+using StringView = util::StringView;
 using EdgeRange = util::range<EdgeID>;
 
 class BaseDataFacade
