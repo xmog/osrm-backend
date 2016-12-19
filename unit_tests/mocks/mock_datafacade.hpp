@@ -19,6 +19,8 @@ namespace test
 
 class MockDataFacade final : public engine::datafacade::BaseDataFacade
 {
+    using StringView = util::StringView;
+
   private:
     EdgeData foo;
 

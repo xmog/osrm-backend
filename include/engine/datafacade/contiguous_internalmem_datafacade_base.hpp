@@ -733,14 +733,14 @@ class ContiguousInternalMemoryDataFacadeBase : public BaseDataFacade
     {
         if (std::numeric_limits<NameID>::max() == id)
         {
-            return {};
+            return "";
         }
 
         auto range = m_name_table->GetRange(id);
 
         if (range.begin() == range.end())
         {
-            return {};
+            return "";
         }
 
         auto first = m_names_char_list.begin() + range.front();
