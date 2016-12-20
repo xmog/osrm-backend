@@ -184,13 +184,13 @@ inline RouteLeg assembleLeg(const datafacade::BaseDataFacade &facade,
         // transform a name_id into a string containing either the name, or -if the name is empty-
         // the reference.
         const auto name_id_to_string = [&](const NameID name_id) {
-            const auto name = facade.GetNameForID(name_id);
+            const auto name = facade.GetNameForID2(name_id);
             if (!name.empty())
-                return name;
+                return name.to_string();
             else
             {
-                const auto ref = facade.GetRefForID(name_id);
-                return ref;
+                const auto ref = facade.GetRefForID2(name_id);
+                return ref.to_string();
             }
         };
 
