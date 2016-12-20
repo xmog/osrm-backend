@@ -127,20 +127,6 @@ util::Coordinate CoordinateExtractor::ExtractRepresentativeCoordinate(
     // coordinate set to add a small level of fault tolerance
     const constexpr double skipping_inaccuracies_distance = 2;
 
-    // fallback, mostly necessary for dead ends
-    if (intersection_node == to_node)
-    {
-        const auto result = ExtractCoordinateAtLength(
-            skipping_inaccuracies_distance, coordinates);
-        //BOOST_ASSERT(is_valid_result(result));
-        return result;
-    }
-
-    // If this reduction leaves us with only two coordinates, the turns/angles are represented in a
-    // valid way. Only curved roads and other difficult scenarios will require multiple coordinates.
-    if (coordinates.size() == 2)
-        return coordinates.back();
-
     const auto &turn_edge_data = node_based_graph.GetEdgeData(turn_edge);
 
     // roundabouts, check early to avoid other costly checks
