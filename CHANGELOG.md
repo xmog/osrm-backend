@@ -1,3 +1,7 @@
+# 5.6.0
+  - Tools:
+    - Added osrm-extract-conditionals tool for checking conditional values in OSM data
+
 # 5.5.1
   - Changes from 5.5.0
     - API:
