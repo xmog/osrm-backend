@@ -202,8 +202,20 @@ bool RoundaboutHandler::qualifiesAsRoundaboutIntersection(
                                                                 node_based_graph.GetTarget(edge),
                                                                 number_of_lanes_at_intersection);
 
-                result.push_back(
-                    util::coordinate_calculation::bearing(src_coordinate, next_coordinate));
+                // coordinate extraction can fail and return zero length segments that we can't
+                // compute the bearing from. In that case we just fail back to using any bearing
+                // value.
+                if (src_coordinate == next_coordinate)
+                {
+                    util::Log(logDEBUG) << "Zero length segment at " << next_coordinate << std::endl;
+                    result.push_back(0);
+                }
+                else
+                {
+                    result.push_back(
+                        util::coordinate_calculation::bearing(src_coordinate, next_coordinate));
+                }
+
                 break;
             }
         }

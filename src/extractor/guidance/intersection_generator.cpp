@@ -2,6 +2,7 @@
 
 #include "util/bearing.hpp"
 #include "util/coordinate_calculation.hpp"
+#include "util/log.hpp"
 
 #include <algorithm>
 #include <functional> // mem_fn
@@ -98,8 +99,18 @@ IntersectionGenerator::ComputeIntersectionShape(const NodeID node_at_center_of_i
         const auto coordinate_along_edge_leaving = extract_coordinate(
             node_at_center_of_intersection, edge_connected_to_intersection, !INVERT, to_node);
 
-        bearing =
-            util::coordinate_calculation::bearing(turn_coordinate, coordinate_along_edge_leaving);
+        // sometimes we encounter cases were the graph has zero-length segments
+        // in that case we can't compute a bearing so we set 0
+        if (turn_coordinate == coordinate_along_edge_leaving)
+        {
+            util::Log(logDEBUG) << "Zero length segment at " << coordinate_along_edge_leaving << std::endl;
+            bearing = 0.;
+        }
+        else
+        {
+            bearing =
+                util::coordinate_calculation::bearing(turn_coordinate, coordinate_along_edge_leaving);
+        }
 
         intersection.push_back({edge_connected_to_intersection, bearing, segment_length});
     }
