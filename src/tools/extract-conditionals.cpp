@@ -117,14 +117,11 @@ auto ParseGlobalArguments(int argc, char *argv[])
 }
 
 void ParseRestrictionsDumpArguments(const char *executable,
-                                    std::vector<std::string> &arguments,
+                                    const std::vector<std::string> &arguments,
                                     std::string &osm_filename,
                                     std::string &csv_filename)
 {
     namespace po = boost::program_options;
-
-    BOOST_ASSERT(arguments.front() == "cond-dump");
-    arguments.erase(arguments.begin());
 
     po::options_description options("cond-dump");
     options.add_options()("help,h", "Show this help message")(
@@ -152,7 +149,7 @@ void ParseRestrictionsDumpArguments(const char *executable,
 }
 
 void ParseRestrictionsCheckArguments(const char *executable,
-                                     std::vector<std::string> &arguments,
+                                     const std::vector<std::string> &arguments,
                                      std::string &input_filename,
                                      std::string &output_filename,
                                      std::string &tz_filename,
@@ -160,9 +157,6 @@ void ParseRestrictionsCheckArguments(const char *executable,
                                      std::int64_t &restriction_value)
 {
     namespace po = boost::program_options;
-
-    BOOST_ASSERT(arguments.front() == "cond-check");
-    arguments.erase(arguments.begin());
 
     po::options_description options("cond-dump");
     options.add_options()("help,h", "Show this help message")(
@@ -199,114 +193,6 @@ void ParseRestrictionsCheckArguments(const char *executable,
     boost::program_options::notify(vm);
 }
 
-// Time zone shape polygons loaded in R-tree
-// local_time_t is a pair of a time zone shape polygon and the corresponding local time
-// rtree_t is a lookup R-tree that maps a geographic point to an index in a local_time_t vector
-using point_t = boost::geometry::model::
-    point<double, 2, boost::geometry::cs::spherical_equatorial<boost::geometry::degree>>;
-using polygon_t = boost::geometry::model::polygon<point_t>;
-using box_t = boost::geometry::model::box<point_t>;
-using rtree_t =
-    boost::geometry::index::rtree<std::pair<box_t, size_t>, boost::geometry::index::rstar<8>>;
-using local_time_t = std::pair<polygon_t, struct tm>;
-
-// Function loads time zone shape polygons, computes a zone local time for utc_time,
-// creates a lookup R-tree and returns a lambda function that maps a point
-// to the corresponding local time
-auto LoadLocalTimesRTree(const std::string &tz_shapes_filename, std::time_t utc_time)
-{
-    // Load time zones shapes and collect local times of utc_time
-    auto shphandle = SHPOpen(tz_shapes_filename.c_str(), "rb");
-    auto dbfhandle = DBFOpen(tz_shapes_filename.c_str(), "rb");
-
-    if (!shphandle || !dbfhandle)
-    {
-        throw osrm::util::exception("ERROR: failed to open " + tz_shapes_filename + ".shp or " +
-                                    tz_shapes_filename + ".dbf file");
-    }
-
-    int num_entities, shape_type;
-    SHPGetInfo(shphandle, &num_entities, &shape_type, NULL, NULL);
-    if (num_entities != DBFGetRecordCount(dbfhandle))
-    {
-        throw osrm::util::exception("ERROR: inconsistent " + tz_shapes_filename + ".shp and " +
-                                    tz_shapes_filename + ".dbf files");
-    }
-
-    const auto tzid = DBFGetFieldIndex(dbfhandle, "TZID");
-    if (tzid == -1)
-    {
-        throw osrm::util::exception("ERROR: did not find field called 'TZID' in the " +
-                                    tz_shapes_filename + ".dbf file");
-    }
-
-    // Lambda function that returns local time in the tzname time zone
-    // Thread safety: MT-Unsafe const:env
-    std::unordered_map<std::string, struct tm> local_time_memo;
-    auto get_local_time_in_tz = [utc_time, &local_time_memo](const char *tzname) {
-        auto it = local_time_memo.find(tzname);
-        if (it == local_time_memo.end())
-        {
-            struct tm timeinfo;
-            setenv("TZ", tzname, 1);
-            tzset();
-            localtime_r(&utc_time, &timeinfo);
-            it = local_time_memo.insert({tzname, timeinfo}).first;
-        }
-
-        return it->second;
-    };
-
-    // Get all time zone shapes and save local times in a vector
-    std::vector<rtree_t::value_type> polygons;
-    std::vector<local_time_t> local_times;
-    for (int shape = 0; shape < num_entities; ++shape)
-    {
-        auto object = SHPReadObject(shphandle, shape);
-        if (object && object->nSHPType == SHPT_POLYGON)
-        {
-            // Find time zone polygon and place its bbox in into R-Tree
-            polygon_t polygon;
-            for (int vertex = 0; vertex < object->nVertices; ++vertex)
-            {
-                polygon.outer().emplace_back(object->padfX[vertex], object->padfY[vertex]);
-            }
-
-            polygons.emplace_back(boost::geometry::return_envelope<box_t>(polygon),
-                                  local_times.size());
-
-            // Get time zone name and emplace polygon and local time for the UTC input
-            const auto tzname = DBFReadStringAttribute(dbfhandle, shape, tzid);
-            local_times.emplace_back(local_time_t{polygon, get_local_time_in_tz(tzname)});
-
-            // std::cout << boost::geometry::dsv(boost::geometry::return_envelope<box_t>(polygon))
-            //           << " " << tzname << " " << asctime(&local_times.back().second);
-        }
-
-        SHPDestroyObject(object);
-    }
-
-    DBFClose(dbfhandle);
-    SHPClose(shphandle);
-
-    // Create R-tree for collected shape polygons
-    rtree_t rtree(polygons);
-
-    // Return a lambda function that maps the input point and UTC time to the local time
-    // binds rtree and local_times
-    return [rtree, local_times](const point_t &point) {
-        std::vector<rtree_t::value_type> result;
-        rtree.query(boost::geometry::index::intersects(point), std::back_inserter(result));
-        for (const auto v : result)
-        {
-            const auto index = v.second;
-            if (boost::geometry::within(point, local_times[index].first))
-                return local_times[index].second;
-        }
-        return tm{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    };
-}
-
 // Data types and functions for conditional restriction
 struct ConditionalRestriction
 {
@@ -325,16 +211,14 @@ struct LocatedConditionalRestriction
 };
 
 BOOST_FUSION_ADAPT_ADT(LocatedConditionalRestriction,
-                       (obj.restriction.from,
-                        obj.restriction.from = val)(obj.restriction.via, obj.restriction.via = val)(
-                           obj.restriction.to, obj.restriction.to = val)(obj.restriction.tag,
-                                                                         obj.restriction.tag = val)(
-                           obj.restriction.value,
-                           obj.restriction.value = val)(obj.restriction.condition,
-                                                        obj.restriction.condition = val)(
-                           obj.location.lon(),
-                           obj.location.set_lon(val))(obj.location.lat(),
-                                                      obj.location.set_lat(val)))
+                       (obj.restriction.from, obj.restriction.from = val)           //
+                       (obj.restriction.via, obj.restriction.via = val)             //
+                       (obj.restriction.to, obj.restriction.to = val)               //
+                       (obj.restriction.tag, obj.restriction.tag = val)             //
+                       (obj.restriction.value, obj.restriction.value = val)         //
+                       (obj.restriction.condition, obj.restriction.condition = val) //
+                       (obj.location.lon(), obj.location.set_lon(val))              //
+                       (obj.location.lat(), obj.location.set_lat(val)))
 
 // The first pass relations handler that collects conditional restrictions
 class ConditionalRestrictionsCollector : public osmium::handler::Handler
@@ -386,9 +270,9 @@ class ConditionalRestrictionsCollector : public osmium::handler::Handler
 
             if (parsed.empty())
             {
-                osrm::util::Log(logWARNING)
-                    << "Conditional restriction parsing failed for \"" << first->value()
-                    << "\" at the turn " << from << " -> " << via << " -> " << to;
+                osrm::util::Log(logWARNING) << "Conditional restriction parsing failed for \""
+                                            << first->value() << "\" at the turn " << from << " -> "
+                                            << via << " -> " << to;
                 continue;
             }
 
@@ -518,7 +402,261 @@ class ConditionalRestrictionsHandler : public osmium::handler::Handler
     index_type location_storage;
 };
 
-int main(int argc, char *argv[])
+int RestrictionsDumpCommand(const char *executable, const std::vector<std::string> &arguments)
+{
+    std::string osm_filename, csv_filename;
+    ParseRestrictionsDumpArguments(executable, arguments, osm_filename, csv_filename);
+
+    // Read OSM input file
+    const osmium::io::File input_file(osm_filename);
+
+    // Read relations
+    std::vector<ConditionalRestriction> conditional_restrictions_prior;
+    ConditionalRestrictionsCollector restrictions_collector(conditional_restrictions_prior);
+    osmium::io::Reader reader1(
+        input_file, osmium::io::read_meta::no, osmium::osm_entity_bits::relation);
+    osmium::apply(reader1, restrictions_collector);
+    reader1.close();
+
+    // Handle nodes and ways in relations
+    ConditionalRestrictionsHandler restrictions_handler(conditional_restrictions_prior);
+    osmium::io::Reader reader2(input_file,
+                               osmium::io::read_meta::no,
+                               osmium::osm_entity_bits::node | osmium::osm_entity_bits::way);
+    osmium::apply(reader2, restrictions_handler);
+    reader2.close();
+
+    // Prepare output stream
+    std::streambuf *buf = std::cout.rdbuf();
+    std::ofstream of;
+    if (!csv_filename.empty())
+    {
+        of.open(csv_filename, std::ios::binary);
+        buf = of.rdbuf();
+    }
+    std::ostream stream(buf);
+
+    // Process collected restrictions and print CSV output
+    restrictions_handler.process_restrictions([&stream](const osmium::Location &location,
+                                                        osmium::object_id_type from,
+                                                        osmium::object_id_type via,
+                                                        osmium::object_id_type to,
+                                                        const std::string &tag,
+                                                        const std::string &value,
+                                                        const std::string &condition) {
+        stream << from << "," << via << "," << to << "," << tag << "," << value << ",\""
+               << condition << "\""
+               << "," << std::setprecision(6) << location.lon() << "," << std::setprecision(6)
+               << location.lat() << "\n";
+    });
+
+    return EXIT_SUCCESS;
+}
+
+// Time zone shape polygons loaded in R-tree
+// local_time_t is a pair of a time zone shape polygon and the corresponding local time
+// rtree_t is a lookup R-tree that maps a geographic point to an index in a local_time_t vector
+using point_t = boost::geometry::model::
+    point<double, 2, boost::geometry::cs::spherical_equatorial<boost::geometry::degree>>;
+using polygon_t = boost::geometry::model::polygon<point_t>;
+using box_t = boost::geometry::model::box<point_t>;
+using rtree_t =
+    boost::geometry::index::rtree<std::pair<box_t, size_t>, boost::geometry::index::rstar<8>>;
+using local_time_t = std::pair<polygon_t, struct tm>;
+
+// Function loads time zone shape polygons, computes a zone local time for utc_time,
+// creates a lookup R-tree and returns a lambda function that maps a point
+// to the corresponding local time
+auto LoadLocalTimesRTree(const std::string &tz_shapes_filename, std::time_t utc_time)
+{
+    // Load time zones shapes and collect local times of utc_time
+    auto shphandle = SHPOpen(tz_shapes_filename.c_str(), "rb");
+    auto dbfhandle = DBFOpen(tz_shapes_filename.c_str(), "rb");
+
+    if (!shphandle || !dbfhandle)
+    {
+        throw osrm::util::exception("failed to open " + tz_shapes_filename + ".shp or " +
+                                    tz_shapes_filename + ".dbf file");
+    }
+
+    int num_entities, shape_type;
+    SHPGetInfo(shphandle, &num_entities, &shape_type, NULL, NULL);
+    if (num_entities != DBFGetRecordCount(dbfhandle))
+    {
+        throw osrm::util::exception("inconsistent " + tz_shapes_filename + ".shp and " +
+                                    tz_shapes_filename + ".dbf files");
+    }
+
+    const auto tzid = DBFGetFieldIndex(dbfhandle, "TZID");
+    if (tzid == -1)
+    {
+        throw osrm::util::exception("did not find field called 'TZID' in the " +
+                                    tz_shapes_filename + ".dbf file");
+    }
+
+    // Lambda function that returns local time in the tzname time zone
+    // Thread safety: MT-Unsafe const:env
+    std::unordered_map<std::string, struct tm> local_time_memo;
+    auto get_local_time_in_tz = [utc_time, &local_time_memo](const char *tzname) {
+        auto it = local_time_memo.find(tzname);
+        if (it == local_time_memo.end())
+        {
+            struct tm timeinfo;
+            setenv("TZ", tzname, 1);
+            tzset();
+            localtime_r(&utc_time, &timeinfo);
+            it = local_time_memo.insert({tzname, timeinfo}).first;
+        }
+
+        return it->second;
+    };
+
+    // Get all time zone shapes and save local times in a vector
+    std::vector<rtree_t::value_type> polygons;
+    std::vector<local_time_t> local_times;
+    for (int shape = 0; shape < num_entities; ++shape)
+    {
+        auto object = SHPReadObject(shphandle, shape);
+        if (object && object->nSHPType == SHPT_POLYGON)
+        {
+            // Find time zone polygon and place its bbox in into R-Tree
+            polygon_t polygon;
+            for (int vertex = 0; vertex < object->nVertices; ++vertex)
+            {
+                polygon.outer().emplace_back(object->padfX[vertex], object->padfY[vertex]);
+            }
+
+            polygons.emplace_back(boost::geometry::return_envelope<box_t>(polygon),
+                                  local_times.size());
+
+            // Get time zone name and emplace polygon and local time for the UTC input
+            const auto tzname = DBFReadStringAttribute(dbfhandle, shape, tzid);
+            local_times.emplace_back(local_time_t{polygon, get_local_time_in_tz(tzname)});
+
+            // std::cout << boost::geometry::dsv(boost::geometry::return_envelope<box_t>(polygon))
+            //           << " " << tzname << " " << asctime(&local_times.back().second);
+        }
+
+        SHPDestroyObject(object);
+    }
+
+    DBFClose(dbfhandle);
+    SHPClose(shphandle);
+
+    // Create R-tree for collected shape polygons
+    rtree_t rtree(polygons);
+
+    // Return a lambda function that maps the input point and UTC time to the local time
+    // binds rtree and local_times
+    return [rtree, local_times](const point_t &point) {
+        std::vector<rtree_t::value_type> result;
+        rtree.query(boost::geometry::index::intersects(point), std::back_inserter(result));
+        for (const auto v : result)
+        {
+            const auto index = v.second;
+            if (boost::geometry::within(point, local_times[index].first))
+                return local_times[index].second;
+        }
+        return tm{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    };
+}
+
+int RestrictionsCheckCommand(const char *executable, const std::vector<std::string> &arguments)
+{
+    std::string input_filename, output_filename;
+    std::string tz_filename = "tz_world";
+    std::time_t utc_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::int64_t restriction_value = 32000;
+    ParseRestrictionsCheckArguments(executable,
+                                    arguments,
+                                    input_filename,
+                                    output_filename,
+                                    tz_filename,
+                                    utc_time,
+                                    restriction_value);
+
+    // Prepare input stream
+    std::streambuf *input_buffer = std::cin.rdbuf();
+    std::ifstream input_file;
+    if (!input_filename.empty())
+    {
+        input_file.open(input_filename, std::ios::binary);
+        input_buffer = input_file.rdbuf();
+    }
+    std::istream input_stream(input_buffer);
+    input_stream.unsetf(std::ios::skipws);
+
+    boost::spirit::istream_iterator sfirst(input_stream);
+    boost::spirit::istream_iterator slast;
+
+    boost::spirit::line_pos_iterator<boost::spirit::istream_iterator> first(sfirst);
+    boost::spirit::line_pos_iterator<boost::spirit::istream_iterator> last(slast);
+
+    // Parse CSV file
+    namespace qi = boost::spirit::qi;
+
+    std::vector<LocatedConditionalRestriction> conditional_restrictions;
+    qi::rule<decltype(first), LocatedConditionalRestriction()> csv_line =
+        qi::ulong_long >> ',' >> qi::ulong_long >> ',' >> qi::ulong_long >> ',' >>
+        qi::as_string[+(~qi::lit(','))] >> ',' >> qi::as_string[+(~qi::lit(','))] >> ',' >> '"' >>
+        qi::as_string[qi::no_skip[*(~qi::lit('"'))]] >> '"' >> ',' >> qi::double_ >> ',' >>
+        qi::double_;
+    const auto ok = qi::phrase_parse(first, last, *(csv_line), qi::space, conditional_restrictions);
+
+    if (!ok || first != last)
+    {
+        osrm::util::Log(logERROR) << input_filename << ":" << first.position() << ": parsing error";
+        return EXIT_FAILURE;
+    }
+
+    // Load R-tree with local times
+    auto get_local_time = LoadLocalTimesRTree(tz_filename, utc_time);
+
+    // Prepare output stream
+    std::streambuf *output_buffer = std::cout.rdbuf();
+    std::ofstream output_file;
+    if (!output_filename.empty())
+    {
+        output_file.open(output_filename, std::ios::binary);
+        output_buffer = output_file.rdbuf();
+    }
+    std::ostream output_stream(output_buffer);
+
+    // For each conditional restriction if condition is active than print a line
+    for (auto &value : conditional_restrictions)
+    {
+        const auto &location = value.location;
+        const auto &restriction = value.restriction;
+
+        // Get local time of the restriction
+        const auto &local_time = get_local_time(point_t{location.lon(), location.lat()});
+
+        // TODO: check restriction type [:<transportation mode>][:<direction>]
+        // http://wiki.openstreetmap.org/wiki/Conditional_restrictions#Tagging
+
+        // TODO: parsing will fail for combined conditions, e.g. Sa-Su AND weight>7
+        // http://wiki.openstreetmap.org/wiki/Conditional_restrictions#Combined_conditions:_AND
+
+        const auto &opening_hours = osrm::util::ParseOpeningHours(restriction.condition);
+
+        if (opening_hours.empty())
+        {
+            osrm::util::Log(logWARNING)
+                << "Condition parsing failed for \"" << restriction.condition << "\" at the turn "
+                << restriction.from << " -> " << restriction.via << " -> " << restriction.to;
+            continue;
+        }
+
+        if (osrm::util::CheckOpeningHours(opening_hours, local_time))
+        {
+            output_stream << restriction.from << "," << restriction.via << "," << restriction.to
+                          << "," << restriction_value << "\n";
+        }
+    }
+    return EXIT_SUCCESS;
+}
+
+int main(int argc, char *argv[]) try
 {
     osrm::util::LogPolicy::GetInstance().Unmute();
 
@@ -526,158 +664,25 @@ int main(int argc, char *argv[])
     auto arguments = ParseGlobalArguments(argc, argv);
     BOOST_ASSERT(!arguments.empty());
 
-    if (arguments.front() == "cond-dump")
+    std::unordered_map<std::string, int (*)(const char *, const std::vector<std::string> &)>
+        commands = {{"cond-dump", &RestrictionsDumpCommand},
+                    {"cond-check", &RestrictionsCheckCommand}};
+
+    auto command = commands.find(arguments.front());
+    if (command == commands.end())
     {
-        std::string osm_filename, csv_filename;
-        ParseRestrictionsDumpArguments(argv[0], arguments, osm_filename, csv_filename);
-
-        // Read OSM input file
-        const osmium::io::File input_file(osm_filename);
-
-        // Read relations
-        std::vector<ConditionalRestriction> conditional_restrictions_prior;
-        ConditionalRestrictionsCollector restrictions_collector(conditional_restrictions_prior);
-        osmium::io::Reader reader1(
-            input_file, osmium::io::read_meta::no, osmium::osm_entity_bits::relation);
-        osmium::apply(reader1, restrictions_collector);
-        reader1.close();
-
-        // Handle nodes and ways in relations
-        ConditionalRestrictionsHandler restrictions_handler(conditional_restrictions_prior);
-        osmium::io::Reader reader2(input_file,
-                                   osmium::io::read_meta::no,
-                                   osmium::osm_entity_bits::node | osmium::osm_entity_bits::way);
-        osmium::apply(reader2, restrictions_handler);
-        reader2.close();
-
-        // Prepare output stream
-        std::streambuf *buf = std::cout.rdbuf();
-        std::ofstream of;
-        if (!csv_filename.empty())
-        {
-            of.open(csv_filename, std::ios::binary);
-            buf = of.rdbuf();
-        }
-        std::ostream stream(buf);
-
-        // Process collected restrictions and print CSV output
-        restrictions_handler.process_restrictions([&stream](const osmium::Location &location,
-                                                            osmium::object_id_type from,
-                                                            osmium::object_id_type via,
-                                                            osmium::object_id_type to,
-                                                            const std::string &tag,
-                                                            const std::string &value,
-                                                            const std::string &condition) {
-            stream << from << "," << via << "," << to << "," << tag << "," << value << ",\""
-                   << condition << "\""
-                   << "," << std::setprecision(6) << location.lon() << "," << std::setprecision(6)
-                   << location.lat() << "\n";
-        });
-    }
-    else if (arguments.front() == "cond-check")
-    {
-        std::string input_filename, output_filename;
-        std::string tz_filename = "tz_world";
-        std::time_t utc_time =
-            std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::int64_t restriction_value = 32000;
-        ParseRestrictionsCheckArguments(argv[0],
-                                        arguments,
-                                        input_filename,
-                                        output_filename,
-                                        tz_filename,
-                                        utc_time,
-                                        restriction_value);
-
-        // Prepare input stream
-        std::streambuf *input_buffer = std::cin.rdbuf();
-        std::ifstream input_file;
-        if (!input_filename.empty())
-        {
-            input_file.open(input_filename, std::ios::binary);
-            input_buffer = input_file.rdbuf();
-        }
-        std::istream input_stream(input_buffer);
-        input_stream.unsetf(std::ios::skipws);
-
-        boost::spirit::istream_iterator sfirst(input_stream);
-        boost::spirit::istream_iterator slast;
-
-        boost::spirit::line_pos_iterator<boost::spirit::istream_iterator> first(sfirst);
-        boost::spirit::line_pos_iterator<boost::spirit::istream_iterator> last(slast);
-
-        // Parse CSV file
-        namespace qi = boost::spirit::qi;
-
-        std::vector<LocatedConditionalRestriction> conditional_restrictions;
-        const auto ok = qi::phrase_parse(
-            first,
-            last,
-            *(qi::ulong_long >> ',' >> qi::ulong_long >> ',' >> qi::ulong_long >> ','
-              >> qi::as_string[+(~qi::lit(','))] >> ','
-              >> qi::as_string[+(~qi::lit(','))] >> ','
-              >> '"' >> qi::as_string[qi::no_skip[*(~qi::lit('"'))]] >> '"' >> ','
-              >> qi::double_ >> ',' >> qi::double_),
-            qi::space,
-            conditional_restrictions);
-
-        if (!ok || first != last)
-        {
-            throw osrm::util::exception(input_filename + ":" + std::to_string(first.position()) +
-                                        ": CSV parsing error");
-        }
-
-        // Load R-tree with local times
-        auto get_local_time = LoadLocalTimesRTree(tz_filename, utc_time);
-
-        // Prepare output stream
-        std::streambuf *output_buffer = std::cout.rdbuf();
-        std::ofstream output_file;
-        if (!output_filename.empty())
-        {
-            output_file.open(output_filename, std::ios::binary);
-            output_buffer = output_file.rdbuf();
-        }
-        std::ostream output_stream(output_buffer);
-
-        // For each conditional restriction if condition is active than print a line
-        for (auto &value : conditional_restrictions)
-        {
-            const auto &location = value.location;
-            const auto &restriction = value.restriction;
-
-            // Get local time of the restriction
-            const auto &local_time = get_local_time(point_t{location.lon(), location.lat()});
-
-            // TODO: check restriction type [:<transportation mode>][:<direction>]
-            // http://wiki.openstreetmap.org/wiki/Conditional_restrictions#Tagging
-
-            // TODO: parsing will fail for combined conditions, e.g. Sa-Su AND weight>7
-            // http://wiki.openstreetmap.org/wiki/Conditional_restrictions#Combined_conditions:_AND
-
-            const auto &opening_hours = osrm::util::ParseOpeningHours(restriction.condition);
-
-            if (opening_hours.empty())
-            {
-                osrm::util::Log(logWARNING)
-                    << "Condition parsing failed for \"" << restriction.condition
-                    << "\" at the turn " << restriction.from << " -> " << restriction.via
-                    << " -> " << restriction.to;
-                continue;
-            }
-
-            if (osrm::util::CheckOpeningHours(opening_hours, local_time))
-            {
-                output_stream << restriction.from << "," << restriction.via << "," << restriction.to
-                              << "," << restriction_value << "\n";
-            }
-        }
-    }
-    else
-    {
-        std::cerr << "Unknown command: " << arguments.front() << "\n";
+        std::cerr << "Unknown command: " << arguments.front() << "\n\n"
+                  << "Available commands:\n";
+        for (auto &command : commands)
+            std::cerr << "    " << command.first << "\n";
         return EXIT_FAILURE;
     }
 
-    return EXIT_SUCCESS;
+    arguments.erase(arguments.begin());
+    return command->second(argv[0], arguments);
+}
+catch (const std::exception &e)
+{
+    osrm::util::Log(logERROR) << e.what();
+    return EXIT_FAILURE;
 }
