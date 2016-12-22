@@ -14,6 +14,7 @@ namespace engine
 {
 namespace guidance
 {
+
 // passed as none-reference to modify in-place and move out again
 OSRM_ATTR_WARN_UNUSED
 std::vector<RouteStep> postProcess(std::vector<RouteStep> steps);
