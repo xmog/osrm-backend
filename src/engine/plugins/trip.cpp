@@ -213,47 +213,49 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
         NodeID from = parameters.source; // 2
         NodeID to = parameters.destination;  // 0
 
-        for (std::size_t index = 0; index < result_table.size(); ++index) {
+        for (std::size_t r_counter = 0, f_counter = 0;
+                r_counter < result_table.size(), f_counter < ftse_table_.size();
+                r_counter++) {
 
-            if (index % number_of_nodes == to) { // do the to thing
-                ftse_table_[index - to] = result_table_[index];
-                index++;
+            std::cout << "r_counter: " << r_counter << std::endl;
+            if (r_counter % number_of_nodes == to) { // do the to thing
+                std::cout << "doing the to thing" << std::endl;
+                ftse_table_[r_counter - to] = result_table_[r_counter];
+                r_counter++;
             }
 
-            if (to * number_of_nodes == index) { // do the from thing
-                index = index + number_of_nodes;
-            }
-
-//      0   1  .2   3   4       5   6  .7   8   9     10  11 .12  13  14     15  16 .17  18  19     20  21 .22  23  24
-// a->  a   b  .c   d   e   b-> a   b  .c   d   e  c->a   b  .c   d   e   d->a   b  .c   d   e   e->a   b  .c   d   e
+            // if (to * number_of_nodes == r_counter) { // do the from thing
+            //     r_counter = r_counter + number_of_nodes - 1;
+            // }
 
 
-//      0   1   2   3      4   5   6   7     8   9   10  11     12  13  14  15
-// ca-> ca  b   d   e  b->ca   b   d   e  d->ca  b   d   e   e->ca  b   d   e   
-
-            // if (index % number_of_nodes == 0) { 
-                // index = index + number_of_nodes;
+            // if (r_counter % number_of_nodes == 0) { 
+                // r_counter = r_counter + number_of_nodes;
             // }
 
             //from = 2
             //to = 0
 
-            //i = 0
+               // 0   1   2  3
+        //  0  // 0   15  30  25 
+        //  1  // 15  0   34  20
+        //  2  // 30  34  0   18
+        //  3  // 25  20  18  0
 
-            // 0   1   2  3
-            // 0   15  30  25 
-            // 15  0   34  20
-            // 30  34  0   18
-            // 25  20  18  0
+            //2->0  1   3
+            // 0    15  25
+            // 34   0   20
+            // 18   20   0
 
-            // 5 15 0
-            // 0 15 0
-            // 0 0  0
+            // 30  15  0
+            // 0   15  0
+            // 30  20  0
 
-            ftse_table_[index] = result_table_[index];
+            ftse_table_[r_counter] = result_table_[r_counter];
+            std::cout << "ftse_table_[r_counter]: " << ftse_table_[r_counter] << std::endl;
         }
 
-        ftse_table_[from * number_of_nodes + from] = 0;
+        // ftse_table_[from * number_of_nodes + from] = 0;
     }
 
     std::cout << "ftse_table_: ";
@@ -268,7 +270,7 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
     // get scc components
     SCC_Component scc = SplitUnaccessibleLocations(number_of_locations, result_table);
     if (parameters.source > -1 && parameters.destination > -1) {
-        SCC_Component scc2 = SplitUnaccessibleLocations(number_of_locations, ftse_table);
+        SCC_Component scc2 = SplitUnaccessibleLocations(number_of_nodes, ftse_table);
     }
 
     std::vector<std::vector<NodeID>> trips;
@@ -290,7 +292,7 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
             {
                 if (parameters.source > -1 && parameters.destination > -1) {
                     scc_route =
-                        trip::BruteForceTrip(route_begin, route_end, number_of_locations, ftse_table);
+                        trip::BruteForceTrip(route_begin, route_end, number_of_nodes, ftse_table);
                 } else {
                     scc_route =
                         trip::BruteForceTrip(route_begin, route_end, number_of_locations, result_table);
@@ -300,7 +302,7 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
             {
                 if (parameters.source > -1 && parameters.destination > -1) {
                     scc_route = trip::FarthestInsertionTrip(
-                        route_begin, route_end, number_of_locations, ftse_table);
+                        route_begin, route_end, number_of_nodes, ftse_table);
                 } else {
                     scc_route = trip::FarthestInsertionTrip(
                         route_begin, route_end, number_of_locations, result_table);
