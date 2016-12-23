@@ -147,9 +147,6 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
 {
     BOOST_ASSERT(parameters.IsValid());
 
-    std::cout << "parameters " << std::endl;
-    std::cout << "parameters.source: " << parameters.source << std::endl;
-    std::cout << "parameters.destination: " << parameters.destination << std::endl;
     // enforce maximum number of locations for performance reasons
     if (max_locations_trip > 0 &&
         static_cast<int>(parameters.coordinates.size()) > max_locations_trip)
@@ -189,11 +186,6 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
     BOOST_ASSERT_MSG(result_table.size() == number_of_locations * number_of_locations,
                      "Distance Table has wrong size");
 
-    // std::for_each(std::begin(result_table), std::end(result_table), [](int nums) {
-    //     std::cout << "number " << nums;
-    //   });
-
-    std::cout << "result_table_value: " << result_table(parameters.source, parameters.destination) << std::endl;
     std::vector<EdgeWeight> ftse_table_;
     std::vector<EdgeWeight> result_table_ = result_table.GetTable();
 
@@ -203,59 +195,32 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
     }
     std::cout << '\n';
 
-    const std::size_t number_of_nodes = result_table.GetNumberOfNodes() - 1;
-    std::cout << "number_of_nodes: " << number_of_nodes << std::endl;
+    const std::size_t number_of_original_nodes = result_table.GetNumberOfNodes();
+    const std::size_t number_of_ftse_nodes = number_of_original_nodes - 1;
 
-    ftse_table_.resize(number_of_nodes * number_of_nodes);
+    ftse_table_.resize(number_of_ftse_nodes * number_of_ftse_nodes);
 
     if (parameters.source > -1 && parameters.destination > -1) {
 
-        NodeID from = parameters.source; // 2
-        NodeID to = parameters.destination;  // 0
+        NodeID from = parameters.source;
+        NodeID to = parameters.destination;
 
         for (std::size_t r_counter = 0, f_counter = 0;
-                r_counter < result_table.size(), f_counter < ftse_table_.size();
-                r_counter++) {
+                r_counter < result_table.size(), f_counter < ftse_table_.size();) {
 
-            std::cout << "r_counter: " << r_counter << std::endl;
-            if (r_counter % number_of_nodes == to) { // do the to thing
-                std::cout << "doing the to thing" << std::endl;
-                ftse_table_[r_counter - to] = result_table_[r_counter];
-                r_counter++;
+            if (r_counter % number_of_original_nodes == to) { // swap from column with to column
+                ftse_table_[f_counter - 2] = result_table_[r_counter++];
+                continue;
             }
 
-            // if (to * number_of_nodes == r_counter) { // do the from thing
-            //     r_counter = r_counter + number_of_nodes - 1;
-            // }
+            if (r_counter / to == number_of_original_nodes) { // skip the from row
+                r_counter = r_counter + number_of_original_nodes;
+            }
 
-
-            // if (r_counter % number_of_nodes == 0) { 
-                // r_counter = r_counter + number_of_nodes;
-            // }
-
-            //from = 2
-            //to = 0
-
-               // 0   1   2  3
-        //  0  // 0   15  30  25 
-        //  1  // 15  0   34  20
-        //  2  // 30  34  0   18
-        //  3  // 25  20  18  0
-
-            //2->0  1   3
-            // 0    15  25
-            // 34   0   20
-            // 18   20   0
-
-            // 30  15  0
-            // 0   15  0
-            // 30  20  0
-
-            ftse_table_[r_counter] = result_table_[r_counter];
-            std::cout << "ftse_table_[r_counter]: " << ftse_table_[r_counter] << std::endl;
+            ftse_table_[f_counter++] = result_table_[r_counter++];
         }
 
-        // ftse_table_[from * number_of_nodes + from] = 0;
+        ftse_table_[from * number_of_ftse_nodes + from] = 0;
     }
 
     std::cout << "ftse_table_: ";
@@ -265,12 +230,12 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
     std::cout << '\n';
 
 
-    const auto ftse_table = util::DistTableWrapper<EdgeWeight>(ftse_table_, number_of_nodes);
+    const auto ftse_table = util::DistTableWrapper<EdgeWeight>(ftse_table_, number_of_ftse_nodes);
 
     // get scc components
     SCC_Component scc = SplitUnaccessibleLocations(number_of_locations, result_table);
     if (parameters.source > -1 && parameters.destination > -1) {
-        SCC_Component scc2 = SplitUnaccessibleLocations(number_of_nodes, ftse_table);
+        SCC_Component scc2 = SplitUnaccessibleLocations(number_of_ftse_nodes, ftse_table);
     }
 
     std::vector<std::vector<NodeID>> trips;
@@ -292,7 +257,7 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
             {
                 if (parameters.source > -1 && parameters.destination > -1) {
                     scc_route =
-                        trip::BruteForceTrip(route_begin, route_end, number_of_nodes, ftse_table);
+                        trip::BruteForceTrip(route_begin, route_end, number_of_ftse_nodes, ftse_table);
                 } else {
                     scc_route =
                         trip::BruteForceTrip(route_begin, route_end, number_of_locations, result_table);
@@ -302,7 +267,7 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
             {
                 if (parameters.source > -1 && parameters.destination > -1) {
                     scc_route = trip::FarthestInsertionTrip(
-                        route_begin, route_end, number_of_nodes, ftse_table);
+                        route_begin, route_end, number_of_ftse_nodes, ftse_table);
                 } else {
                     scc_route = trip::FarthestInsertionTrip(
                         route_begin, route_end, number_of_locations, result_table);
