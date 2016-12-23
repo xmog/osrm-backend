@@ -5,8 +5,6 @@
 
 #include <boost/assert.hpp>
 
-#include <cmath>
-
 #include <algorithm>
 #include <iterator>
 #include <limits>
