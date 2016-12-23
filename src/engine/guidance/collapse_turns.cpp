@@ -1,6 +1,8 @@
 #include "engine/guidance/collapse_turns.hpp"
 #include "extractor/guidance/turn_instruction.hpp"
+#include "util/bearing.hpp"
 #include "util/guidance/name_announcements.hpp"
+
 #include "util/debug.hpp"
 
 #include <cstddef>
@@ -10,6 +12,7 @@
 #include <iterator>
 
 using osrm::extractor::guidance::TurnInstruction;
+using osrm::util::angularDeviation;
 using namespace osrm::extractor::guidance;
 
 namespace osrm
@@ -23,6 +26,60 @@ using RouteSteps = std::vector<RouteStep>;
 using RouteStepIterator = typename RouteSteps::iterator;
 namespace
 {
+const constexpr double MAX_COLLAPSE_DISTANCE = 30;
+
+double findTotalTurnAngle(const RouteStep &entry_step, const RouteStep &exit_step)
+{
+    const auto exit_intersection = exit_step.intersections.front();
+    const auto exit_step_exit_bearing = exit_intersection.bearings[exit_intersection.out];
+    const auto exit_step_entry_bearing =
+        util::reverseBearing(exit_intersection.bearings[exit_intersection.in]);
+
+    const auto entry_intersection = entry_step.intersections.front();
+    const auto entry_step_entry_bearing =
+        util::reverseBearing(entry_intersection.bearings[entry_intersection.in]);
+    const auto entry_step_exit_bearing = entry_intersection.bearings[entry_intersection.out];
+
+    const auto exit_angle =
+        util::angleBetweenBearings(exit_step_entry_bearing, exit_step_exit_bearing);
+    const auto entry_angle =
+        util::angleBetweenBearings(entry_step_entry_bearing, entry_step_exit_bearing);
+
+    const double total_angle =
+        util::angleBetweenBearings(entry_step_entry_bearing, exit_step_exit_bearing);
+    // We allow for minor deviations from a straight line
+    if (((entry_step.distance < MAX_COLLAPSE_DISTANCE && exit_step.intersections.size() == 1) ||
+         (entry_angle <= 185 && exit_angle <= 185) || (entry_angle >= 175 && exit_angle >= 175)) &&
+        angularDeviation(total_angle, 180) > 20)
+    {
+        // both angles are in the same direction, the total turn gets increased
+        //
+        // a ---- b
+        //           \
+        //              c
+        //              |
+        //              d
+        //
+        // Will be considered just like
+        // a -----b
+        //        |
+        //        c
+        //        |
+        //        d
+        return total_angle;
+    }
+    else
+    {
+        // to prevent ignoring angles like
+        // a -- b
+        //      |
+        //      c -- d
+        // We don't combine both turn angles here but keep the very first turn angle.
+        // We choose the first one, since we consider the first maneuver in a merge range the
+        // important one
+        return entry_angle;
+    }
+}
 
 // check if a step is completely without turn type
 bool hasTurnType(const RouteStep &step)
@@ -98,7 +155,7 @@ inline bool haveSameName(const RouteStep &lhs, const RouteStep &rhs)
 
     // ok, bite the sour grape and check the strings already
     else
-        return util::guidance::requiresNameAnnounced(
+        return !util::guidance::requiresNameAnnounced(
             lhs.name, lhs.ref, lhs.pronunciation, rhs.name, rhs.ref, rhs.pronunciation);
 }
 
@@ -109,12 +166,12 @@ inline void handleSliproad(RouteStepIterator sliproad_step)
         while (isTrafficLightStep(*next_step))
         {
             // in sliproad checks, we should have made sure not to include invalid modes
-            BOOST_ASSERT(haveSameMode(*sliproad_step,*next_step));
+            BOOST_ASSERT(haveSameMode(*sliproad_step, *next_step));
             sliproad_step->ElongateBy(*next_step);
             next_step->Invalidate();
             next_step = findNextTurn(next_step);
         }
-        BOOST_ASSERT(haveSameMode(*sliproad_step,*next_step));
+        BOOST_ASSERT(haveSameMode(*sliproad_step, *next_step));
         return next_step;
     }();
 
@@ -125,10 +182,16 @@ inline void handleSliproad(RouteStepIterator sliproad_step)
     }
     else
     {
-        auto sliproad_turn_type =
-            haveSameName(*sliproad_step, *next_step) ? TurnType::Continue : TurnType::Turn;
+        const auto previous_step = findPreviousTurn(sliproad_step);
+        const auto connecting_same_name_roads = haveSameName(*previous_step, *next_step);
+        std::cout << "Found to be the same" << std::endl;
+        auto sliproad_turn_type = connecting_same_name_roads ? TurnType::Continue : TurnType::Turn;
         setInstructionType(*sliproad_step, sliproad_turn_type);
-        CombineRouteSteps(*sliproad_step, *next_step, KeepInTurnType, KeepOutSignage);
+        CombineRouteSteps(*sliproad_step,
+                          *next_step,
+                          KeepInTurnTypeWithCombinedAngle,
+                          KeepOutSignage,
+                          KeepOutLanes);
     }
 }
 
@@ -180,6 +243,16 @@ void KeepInTurnType(RouteStep &output_step,
 {
     output_step.maneuver = step_at_turn_location.maneuver;
 }
+
+void KeepInTurnTypeWithCombinedAngle(RouteStep &output_step,
+                                     const RouteStep &step_at_turn_location,
+                                     const RouteStep &step_after_turn_location)
+{
+    output_step.maneuver = step_at_turn_location.maneuver;
+    const auto angle = findTotalTurnAngle(step_at_turn_location, step_after_turn_location);
+    output_step.maneuver.instruction.direction_modifier = getTurnDirection(angle);
+}
+
 void KeepOutTurnType(RouteStep &output_step,
                      const RouteStep & /**/,
                      const RouteStep &step_after_turn_location)
@@ -203,6 +276,24 @@ void KeepOutSignage(RouteStep &output_step,
     output_step.AdaptStepSignage(step_after_turn_location);
     output_step.rotary_name = step_after_turn_location.rotary_name;
     output_step.rotary_pronunciation = step_after_turn_location.rotary_pronunciation;
+}
+
+// keep lanes
+void KeepInLanes(RouteStep &output_step,
+                 const RouteStep &step_at_turn_location,
+                 const RouteStep & /**/)
+{
+    output_step.intersections.front().lanes = step_at_turn_location.intersections.front().lanes;
+    output_step.intersections.front().lane_description =
+        step_at_turn_location.intersections.front().lane_description;
+}
+void KeepOutLanes(RouteStep &output_step,
+                  const RouteStep & /**/,
+                  const RouteStep &step_after_turn_location)
+{
+    output_step.intersections.front().lanes = step_after_turn_location.intersections.front().lanes;
+    output_step.intersections.front().lane_description =
+        step_after_turn_location.intersections.front().lane_description;
 }
 
 } // namespace guidance

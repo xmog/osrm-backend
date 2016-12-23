@@ -33,6 +33,10 @@ RouteStep CombineRouteSteps(const RouteStep &step_at_turn_location,
 void KeepInTurnType(RouteStep &output_step,
                     const RouteStep &step_at_turn_location,
                     const RouteStep &step_after_turn_location);
+// Keep the type at the turn location, but compute a combined turn angle
+void KeepInTurnTypeWithCombinedAngle(RouteStep &output_step,
+                                     const RouteStep &step_at_turn_location,
+                                     const RouteStep &step_after_turn_location);
 void KeepOutTurnType(RouteStep &output_step,
                      const RouteStep &step_at_turn_location,
                      const RouteStep &step_after_turn_location);
@@ -45,18 +49,30 @@ void KeepOutSignage(RouteStep &output_step,
                     const RouteStep &step_at_turn_location,
                     const RouteStep &step_after_turn_location);
 
+// Signage Strategies
+void KeepInLanes(RouteStep &output_step,
+                 const RouteStep &step_at_turn_location,
+                 const RouteStep &step_after_turn_location);
+void KeepOutLanes(RouteStep &output_step,
+                  const RouteStep &step_at_turn_location,
+                  const RouteStep &step_after_turn_location);
+
 /* IMPLEMENTATIONS */
-template <typename CombinedTurnStrategy, typename SignageStrategy>
+template <typename CombinedTurnStrategy, typename SignageStrategy, typename LaneStrategy>
 void CombineRouteSteps(RouteStep &step_at_turn_location,
                        RouteStep &step_after_turn_location,
-                       const CombinedTurnStrategy combined_turn_stragey,
-                       const SignageStrategy signage_strategy)
+                       CombinedTurnStrategy combined_turn_stragey,
+                       SignageStrategy signage_strategy,
+                       LaneStrategy lane_strategy)
 {
     // assign the combined turn type
     combined_turn_stragey(step_at_turn_location, step_at_turn_location, step_after_turn_location);
 
     // assign the combind signage
     signage_strategy(step_at_turn_location, step_at_turn_location, step_after_turn_location);
+
+    // assign the desired turn lanes
+    lane_strategy(step_at_turn_location, step_at_turn_location, step_after_turn_location);
 
     // further stuff should happen here as well
     step_at_turn_location.ElongateBy(step_after_turn_location);
