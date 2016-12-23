@@ -63,9 +63,8 @@ Feature: Basic trip planning
             """
             a b
 
-                c
-                
-            e d
+                  c
+            e  d
             """
 
         And the ways

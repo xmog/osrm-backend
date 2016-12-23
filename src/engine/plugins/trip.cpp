@@ -201,26 +201,20 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
     ftse_table_.resize(number_of_ftse_nodes * number_of_ftse_nodes);
 
     if (parameters.source > -1 && parameters.destination > -1) {
-
-        NodeID from = parameters.source;
-        NodeID to = parameters.destination;
-
         for (std::size_t r_counter = 0, f_counter = 0;
                 r_counter < result_table.size(), f_counter < ftse_table_.size();) {
-
-            if (r_counter % number_of_original_nodes == to) { // swap from column with to column
+            // swap parameters.destination column with to column
+            if (r_counter % number_of_original_nodes == parameters.destination) {
                 ftse_table_[f_counter - 2] = result_table_[r_counter++];
                 continue;
             }
-
-            if (r_counter / to == number_of_original_nodes) { // skip the from row
+            // skip the parameters.source row
+            if (r_counter / parameters.destination == number_of_original_nodes) { 
                 r_counter = r_counter + number_of_original_nodes;
             }
-
             ftse_table_[f_counter++] = result_table_[r_counter++];
         }
-
-        ftse_table_[from * number_of_ftse_nodes + from] = 0;
+        ftse_table_[parameters.source * number_of_ftse_nodes + parameters.source] = 0;
     }
 
     std::cout << "ftse_table_: ";
@@ -229,14 +223,10 @@ Status TripPlugin::HandleRequest(const std::shared_ptr<datafacade::BaseDataFacad
     }
     std::cout << '\n';
 
-
     const auto ftse_table = util::DistTableWrapper<EdgeWeight>(ftse_table_, number_of_ftse_nodes);
 
     // get scc components
     SCC_Component scc = SplitUnaccessibleLocations(number_of_locations, result_table);
-    if (parameters.source > -1 && parameters.destination > -1) {
-        SCC_Component scc2 = SplitUnaccessibleLocations(number_of_ftse_nodes, ftse_table);
-    }
 
     std::vector<std::vector<NodeID>> trips;
     trips.reserve(scc.GetNumberOfComponents());
